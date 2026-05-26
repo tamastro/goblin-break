@@ -1,0 +1,171 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BottomNav, type TabId } from "./components/BottomNav";
+import { Header } from "./components/Header";
+import { HistoryPanel } from "./components/HistoryPanel";
+import { IntensityCard } from "./components/IntensityCard";
+import { BreakFlow } from "./components/BreakFlow";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { TimerSection } from "./components/TimerSection";
+import { randomWorkoutForIntensity } from "./data/intensity";
+import { getWorkoutById, type Workout } from "./data/workouts";
+import { useProgress } from "./hooks/useProgress";
+import { useSW, type SWMessage } from "./hooks/useSW";
+import { useTimer } from "./hooks/useTimer";
+import { canNotify, getNotifPermission, requestNotifPermission } from "./lib/notify";
+import { loadSettings, saveSettings, type Settings } from "./lib/storage";
+
+export default function App() {
+  const { totalBreaks, title, recordCompletion } = useProgress();
+  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
+  const [spotlightWorkout, setSpotlightWorkout] = useState<Workout>(() =>
+    randomWorkoutForIntensity(loadSettings().intensityId)
+  );
+  const [notifOk, setNotifOk] = useState(canNotify());
+  const [tab, setTab] = useState<TabId>("timer");
+
+  const pickWorkout = useCallback(
+    () => randomWorkoutForIntensity(settings.intensityId),
+    [settings.intensityId]
+  );
+
+  const handleSWMessage = useCallback(
+    (msg: SWMessage) => {
+      if (msg.type === "BREAK") {
+        const workout = getWorkoutById(msg.workoutId);
+        if (workout) setActiveWorkout(workout);
+      }
+      if (msg.type === "BREAK_DONE") {
+        const workout = getWorkoutById(msg.workoutId);
+        if (workout) {
+          recordCompletion(workout);
+          setActiveWorkout(null);
+          setSpotlightWorkout(pickWorkout());
+        }
+      }
+    },
+    [recordCompletion, pickWorkout]
+  );
+
+  const { state, isLocalTimer, startTimer, stopTimer, snooze, ping } =
+    useSW(handleSWMessage);
+  const idleSec = settings.intervalMin * 60;
+  const { timeLeftSec, progress, isRunning } = useTimer(state, ping, idleSec);
+
+  // Fire breaks from foreground fallback when SW is not controlling the page
+  useEffect(() => {
+    if (!isRunning || !isLocalTimer || timeLeftSec > 0 || activeWorkout) return;
+    setActiveWorkout(pickWorkout());
+  }, [isRunning, isLocalTimer, timeLeftSec, activeWorkout, pickWorkout]);
+
+  const handleSaveSettings = (next: Settings) => {
+    setSettings(next);
+    saveSettings(next);
+    setSpotlightWorkout(randomWorkoutForIntensity(next.intensityId));
+    if (isRunning) {
+      startTimer(next.intervalMin * 60 * 1000);
+    }
+  };
+
+  const handleRequestNotif = async () => {
+    const r = await requestNotifPermission();
+    setNotifOk(r === "granted");
+  };
+
+  const handleToggleTimer = async () => {
+    if (isRunning) {
+      await stopTimer();
+      return;
+    }
+    const intervalMs = settings.intervalMin * 60 * 1000;
+    void startTimer(intervalMs);
+    if (!notifOk) {
+      void requestNotifPermission().then((r) => setNotifOk(r === "granted"));
+    }
+  };
+
+  const handleWorkoutFinished = () => {
+    if (activeWorkout) recordCompletion(activeWorkout);
+  };
+
+  const handleExitBreak = () => {
+    setActiveWorkout(null);
+    setSpotlightWorkout(pickWorkout());
+  };
+
+  const handleSnooze = () => {
+    snooze();
+    setActiveWorkout(null);
+  };
+
+  const previewQuest = () => {
+    const workout = pickWorkout();
+    setSpotlightWorkout(workout);
+    setActiveWorkout(workout);
+  };
+
+  const displayWorkout = useMemo(
+    () => activeWorkout ?? spotlightWorkout,
+    [activeWorkout, spotlightWorkout]
+  );
+
+  const cardProgress = activeWorkout ? 0.33 : isRunning ? progress : 0;
+
+  const mainClass =
+    tab === "settings"
+      ? "w-full max-w-3xl px-margin-mobile pt-md pb-xl flex-1 flex flex-col gap-xl mx-auto"
+      : "w-full max-w-[1200px] px-margin-mobile md:px-margin-desktop pt-lg pb-xl flex-1 flex flex-col gap-lg items-center relative";
+
+  if (activeWorkout) {
+    const questIndex = (totalBreaks % 5) + 1;
+    return (
+      <BreakFlow
+        workout={activeWorkout}
+        questIndex={questIndex}
+        totalBreaks={totalBreaks}
+        onWorkoutFinished={handleWorkoutFinished}
+        onExit={handleExitBreak}
+        onSnooze={handleSnooze}
+        onDismiss={handleExitBreak}
+      />
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center selection:bg-primary-container selection:text-on-primary-container overflow-x-hidden pb-32">
+      <Header onNotifClick={handleRequestNotif} notifOk={notifOk} />
+
+      <main className={mainClass}>
+        {tab === "timer" && (
+          <>
+            <TimerSection
+              timeLeftSec={timeLeftSec}
+              isRunning={isRunning}
+              onToggle={handleToggleTimer}
+            />
+
+            <IntensityCard
+              workout={displayWorkout}
+              progress={cardProgress}
+              onStartQuest={!activeWorkout ? previewQuest : undefined}
+            />
+
+            {getNotifPermission() === "denied" && (
+              <p className="font-body-md text-error text-center max-w-md">
+                Notifications blocked. Enable in browser settings.
+              </p>
+            )}
+          </>
+        )}
+
+        {tab === "history" && <HistoryPanel title={title} totalBreaks={totalBreaks} />}
+
+        {tab === "settings" && (
+          <SettingsPanel settings={settings} onSave={handleSaveSettings} />
+        )}
+      </main>
+
+      <BottomNav active={tab} onChange={setTab} />
+    </div>
+  );
+}

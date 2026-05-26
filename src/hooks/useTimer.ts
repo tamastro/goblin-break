@@ -1,0 +1,53 @@
+import { useEffect, useState } from "react";
+import type { SWState } from "./useSW";
+
+export function useTimer(
+  swState: SWState,
+  ping: () => void | Promise<void>,
+  idleDisplaySec: number
+) {
+  const [timeLeftSec, setTimeLeftSec] = useState(idleDisplaySec);
+
+  useEffect(() => {
+    void ping();
+    const pingInterval = setInterval(() => void ping(), 30_000);
+    return () => clearInterval(pingInterval);
+  }, [ping]);
+
+  useEffect(() => {
+    if (!swState.isRunning || swState.nextBreakAt == null) {
+      setTimeLeftSec(idleDisplaySec);
+      return;
+    }
+
+    const tick = () => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((swState.nextBreakAt! - Date.now()) / 1000)
+      );
+      setTimeLeftSec(remaining);
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [swState.nextBreakAt, swState.isRunning, idleDisplaySec]);
+
+  const totalSec = Math.ceil(swState.intervalMs / 1000);
+  const progress =
+    swState.isRunning && totalSec > 0 ? 1 - timeLeftSec / totalSec : 0;
+
+  const displaySec = swState.isRunning ? timeLeftSec : idleDisplaySec;
+
+  return {
+    timeLeftSec: displaySec,
+    progress,
+    isRunning: swState.isRunning,
+  };
+}
+
+export function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
