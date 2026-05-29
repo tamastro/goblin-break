@@ -120,8 +120,8 @@ export default function App() {
 
   const mainClass =
     tab === "settings"
-      ? "w-full max-w-3xl px-margin-mobile pt-md pb-xl flex-1 flex flex-col gap-xl mx-auto"
-      : "w-full max-w-[1200px] px-margin-mobile md:px-margin-desktop pt-lg pb-xl flex-1 flex flex-col gap-lg items-center relative";
+      ? "w-full max-w-3xl px-margin-mobile sm:px-6 md:px-10 lg:px-margin-desktop pt-md md:pt-lg pb-xl flex-1 flex flex-col gap-xl mx-auto"
+      : "w-full max-w-6xl px-margin-mobile sm:px-6 md:px-10 lg:px-margin-desktop pt-lg md:pt-8 pb-xl flex-1 flex flex-col gap-lg items-center relative";
 
   if (activeSession) {
     return (
@@ -137,22 +137,24 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center selection:bg-primary-container selection:text-on-primary-container overflow-x-hidden pb-32">
+    <div className="page-full flex flex-col items-center selection:bg-primary-container selection:text-on-primary-container overflow-x-hidden pb-28 md:pb-8 md:pt-16">
       <Header onNotifClick={handleRequestNotif} notifOk={notifOk} />
 
       <main className={mainClass}>
         {tab === "timer" && (
           <>
-            <TimerSection
-              timeLeftSec={timeLeftSec}
-              isRunning={isRunning}
-              onToggle={handleToggleTimer}
-            />
+            <div className="w-full flex flex-col items-center gap-lg lg:flex-row lg:items-start lg:justify-center lg:gap-xl lg:max-w-4xl">
+              <TimerSection
+                timeLeftSec={timeLeftSec}
+                isRunning={isRunning}
+                onToggle={handleToggleTimer}
+              />
 
-            <IntensityCard intensityId={settings.intensityId} />
+              <IntensityCard intensityId={settings.intensityId} />
+            </div>
 
             {getNotifPermission() === "denied" && (
-              <p className="font-body-md text-error text-center max-w-md">
+              <p className="font-body-md text-error text-center max-w-md w-full">
                 Notifications blocked. Enable in browser settings.
               </p>
             )}

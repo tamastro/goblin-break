@@ -15,6 +15,17 @@
   .pb-safe {
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
+  .pt-safe {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+  .px-safe {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+  }
+  .page-full {
+    min-height: 100dvh;
+    min-height: 100svh;
+  }
 }
 
 @keyframes pulse-glow {
