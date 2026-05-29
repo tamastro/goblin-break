@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BottomNav, type TabId } from "./components/BottomNav";
 import { Header } from "./components/Header";
 import { HistoryPanel } from "./components/HistoryPanel";
@@ -6,7 +6,6 @@ import { IntensityCard } from "./components/IntensityCard";
 import { BreakFlow } from "./components/BreakFlow";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { TimerSection } from "./components/TimerSection";
-import { randomWorkoutForIntensity } from "./data/intensity";
 import { getWorkoutById, type Workout } from "./data/workouts";
 import { useProgress } from "./hooks/useProgress";
 import { useSW, type SWMessage } from "./hooks/useSW";
@@ -19,9 +18,6 @@ export default function App() {
   const { totalBreaks, title, recordCompletion } = useProgress();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [activeSession, setActiveSession] = useState<Workout[] | null>(null);
-  const [spotlightWorkout, setSpotlightWorkout] = useState<Workout>(() =>
-    randomWorkoutForIntensity(loadSettings().intensityId)
-  );
   const [notifOk, setNotifOk] = useState(canNotify());
   const [tab, setTab] = useState<TabId>("timer");
 
@@ -52,7 +48,6 @@ export default function App() {
         const workout = getWorkoutById(msg.workoutId);
         if (workout) recordCompletion(workout);
         setActiveSession(null);
-        setSpotlightWorkout(randomWorkoutForIntensity(settings.intensityId));
         void rescheduleTimer();
       }
     },
@@ -62,7 +57,7 @@ export default function App() {
   const { state, isLocalTimer, startTimer, stopTimer, snooze, ping } =
     useSW(handleSWMessage);
   const idleSec = settings.intervalMin * 60;
-  const { timeLeftSec, progress, isRunning } = useTimer(state, ping, idleSec);
+  const { timeLeftSec, isRunning } = useTimer(state, ping, idleSec);
   const prevTimeLeftRef = useRef(timeLeftSec);
 
   useEffect(() => {
@@ -84,7 +79,6 @@ export default function App() {
   const handleSaveSettings = (next: Settings) => {
     setSettings(next);
     saveSettings(next);
-    setSpotlightWorkout(randomWorkoutForIntensity(next.intensityId));
     if (activeSession && next.intensityId !== settings.intensityId) {
       setActiveSession(buildBreakSession(next.intensityId));
     }
@@ -116,7 +110,6 @@ export default function App() {
 
   const handleExitBreak = () => {
     setActiveSession(null);
-    setSpotlightWorkout(randomWorkoutForIntensity(settings.intensityId));
     void rescheduleTimer();
   };
 
@@ -124,17 +117,6 @@ export default function App() {
     await snooze();
     setActiveSession(null);
   };
-
-  const previewQuest = () => {
-    startBreakSession();
-  };
-
-  const displayWorkout = useMemo(
-    () => activeSession?.[0] ?? spotlightWorkout,
-    [activeSession, spotlightWorkout]
-  );
-
-  const cardProgress = activeSession ? 0.33 : isRunning ? progress : 0;
 
   const mainClass =
     tab === "settings"
@@ -167,11 +149,7 @@ export default function App() {
               onToggle={handleToggleTimer}
             />
 
-            <IntensityCard
-              workout={displayWorkout}
-              progress={cardProgress}
-              onStartQuest={!activeSession ? previewQuest : undefined}
-            />
+            <IntensityCard intensityId={settings.intensityId} />
 
             {getNotifPermission() === "denied" && (
               <p className="font-body-md text-error text-center max-w-md">

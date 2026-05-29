@@ -21,7 +21,7 @@ export interface IntensityPreset {
 export const INTENSITY_PRESETS: IntensityPreset[] = [
   {
     id: "cozy",
-    name: "Cozy Goblin",
+    name: "Functional Enough",
     description: "Bare minimum movement for exhausted desk goblins.",
     durationLabel: "30–45s",
     icon: "self_improvement",
@@ -32,7 +32,7 @@ export const INTENSITY_PRESETS: IntensityPreset[] = [
   },
   {
     id: "cave",
-    name: "Cave Explorer",
+    name: "Stiffness Detected",
     description: "Your goblin body has started making concerning noises.",
     durationLabel: "60–90s",
     icon: "hiking",
@@ -43,7 +43,7 @@ export const INTENSITY_PRESETS: IntensityPreset[] = [
   },
   {
     id: "dungeon",
-    name: "Dungeon Survivor",
+    name: "Structural Integrity Failing",
     description: "This goblin has not moved voluntarily in several hours.",
     durationLabel: "2–3m",
     icon: "local_fire_department",
@@ -54,7 +54,7 @@ export const INTENSITY_PRESETS: IntensityPreset[] = [
   },
   {
     id: "raid",
-    name: "Raid Boss Recovery",
+    name: "Emergency Spine Restoration",
     description: "Emergency restoration protocol for advanced goblin degeneration.",
     durationLabel: "4–5m",
     icon: "bolt",
