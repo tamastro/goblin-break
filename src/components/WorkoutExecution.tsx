@@ -17,7 +17,7 @@ export function WorkoutExecution({
   onClose: () => void;
 }) {
   const { display, finished } = useWorkoutCountdown(workout.durationSec, workout.id);
-  const progressPct = Math.round((questIndex / questTotal) * 100);
+  const progressPct = Math.round(((questIndex - 1) / questTotal) * 100);
 
   return (
     <div className="fixed inset-0 z-[100] bg-background text-on-background font-body-md overflow-hidden antialiased">

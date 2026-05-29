@@ -1,6 +1,10 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
-import { randomWorkoutForIntensity, type IntensityId } from "./data/intensity";
+import {
+  normalizeIntensityId,
+  randomWorkoutForIntensity,
+  type IntensityId,
+} from "./data/intensity";
 import { getWorkoutById } from "./data/workouts";
 import { randomReminder } from "./data/reminders";
 
@@ -21,11 +25,11 @@ let pendingWorkoutId: string | null = null;
 function readIntensityId(): IntensityId {
   try {
     const raw = localStorage.getItem("gmb:settings");
-    if (!raw) return "standard";
-    const parsed = JSON.parse(raw) as { intensityId?: IntensityId };
-    return parsed.intensityId ?? "standard";
+    if (!raw) return "cave";
+    const parsed = JSON.parse(raw) as { intensityId?: string };
+    return normalizeIntensityId(parsed.intensityId);
   } catch {
-    return "standard";
+    return "cave";
   }
 }
 

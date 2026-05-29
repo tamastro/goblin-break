@@ -14,6 +14,7 @@ const LOOT_LUNGES_ILLUSTRATION =
 
 const BY_ID: Partial<Record<string, string>> = {
   "xp-squats": XP_SQUATS_PREVIEW,
+  "loot-lunges": LOOT_LUNGES_ILLUSTRATION,
 };
 
 const ILLUSTRATION_BY_ID: Partial<Record<string, string>> = {

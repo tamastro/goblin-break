@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SWState } from "./useSW";
 
 export function useTimer(
@@ -7,6 +7,8 @@ export function useTimer(
   idleDisplaySec: number
 ) {
   const [timeLeftSec, setTimeLeftSec] = useState(idleDisplaySec);
+  const swStateRef = useRef(swState);
+  swStateRef.current = swState;
 
   useEffect(() => {
     void ping();
@@ -15,23 +17,22 @@ export function useTimer(
   }, [ping]);
 
   useEffect(() => {
-    if (!swState.isRunning || swState.nextBreakAt == null) {
-      setTimeLeftSec(idleDisplaySec);
-      return;
-    }
-
     const tick = () => {
-      const remaining = Math.max(
-        0,
-        Math.ceil((swState.nextBreakAt! - Date.now()) / 1000)
-      );
+      const { isRunning, nextBreakAt } = swStateRef.current;
+
+      if (!isRunning || nextBreakAt == null) {
+        setTimeLeftSec(idleDisplaySec);
+        return;
+      }
+
+      const remaining = Math.max(0, Math.ceil((nextBreakAt - Date.now()) / 1000));
       setTimeLeftSec(remaining);
     };
 
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [swState.nextBreakAt, swState.isRunning, idleDisplaySec]);
+  }, [swState.isRunning, swState.nextBreakAt, idleDisplaySec]);
 
   const totalSec = Math.ceil(swState.intervalMs / 1000);
   const progress =

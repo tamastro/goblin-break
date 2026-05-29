@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomNav, type TabId } from "./components/BottomNav";
 import { Header } from "./components/Header";
 import { HistoryPanel } from "./components/HistoryPanel";
@@ -11,57 +11,83 @@ import { getWorkoutById, type Workout } from "./data/workouts";
 import { useProgress } from "./hooks/useProgress";
 import { useSW, type SWMessage } from "./hooks/useSW";
 import { useTimer } from "./hooks/useTimer";
+import { buildBreakSession } from "./lib/breakSession";
 import { canNotify, getNotifPermission, requestNotifPermission } from "./lib/notify";
 import { loadSettings, saveSettings, type Settings } from "./lib/storage";
 
 export default function App() {
   const { totalBreaks, title, recordCompletion } = useProgress();
   const [settings, setSettings] = useState<Settings>(loadSettings);
-  const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
+  const [activeSession, setActiveSession] = useState<Workout[] | null>(null);
   const [spotlightWorkout, setSpotlightWorkout] = useState<Workout>(() =>
     randomWorkoutForIntensity(loadSettings().intensityId)
   );
   const [notifOk, setNotifOk] = useState(canNotify());
   const [tab, setTab] = useState<TabId>("timer");
 
-  const pickWorkout = useCallback(
-    () => randomWorkoutForIntensity(settings.intensityId),
+  const startBreakSession = useCallback(
+    (leadWorkoutId?: string) => {
+      const session = buildBreakSession(settings.intensityId, leadWorkoutId);
+      if (session.length > 0) {
+        setActiveSession(session);
+      }
+    },
     [settings.intensityId]
   );
+
+  const startTimerRef = useRef<(intervalMs: number) => Promise<void>>(async () => {});
+  const isRunningRef = useRef(false);
+
+  const rescheduleTimer = useCallback(async () => {
+    if (!isRunningRef.current) return;
+    await startTimerRef.current(settings.intervalMin * 60 * 1000);
+  }, [settings.intervalMin]);
 
   const handleSWMessage = useCallback(
     (msg: SWMessage) => {
       if (msg.type === "BREAK") {
-        const workout = getWorkoutById(msg.workoutId);
-        if (workout) setActiveWorkout(workout);
+        startBreakSession(msg.workoutId);
       }
       if (msg.type === "BREAK_DONE") {
         const workout = getWorkoutById(msg.workoutId);
-        if (workout) {
-          recordCompletion(workout);
-          setActiveWorkout(null);
-          setSpotlightWorkout(pickWorkout());
-        }
+        if (workout) recordCompletion(workout);
+        setActiveSession(null);
+        setSpotlightWorkout(randomWorkoutForIntensity(settings.intensityId));
+        void rescheduleTimer();
       }
     },
-    [recordCompletion, pickWorkout]
+    [startBreakSession, recordCompletion, settings.intensityId, rescheduleTimer]
   );
 
   const { state, isLocalTimer, startTimer, stopTimer, snooze, ping } =
     useSW(handleSWMessage);
   const idleSec = settings.intervalMin * 60;
   const { timeLeftSec, progress, isRunning } = useTimer(state, ping, idleSec);
+  const prevTimeLeftRef = useRef(timeLeftSec);
 
-  // Fire breaks from foreground fallback when SW is not controlling the page
   useEffect(() => {
-    if (!isRunning || !isLocalTimer || timeLeftSec > 0 || activeWorkout) return;
-    setActiveWorkout(pickWorkout());
-  }, [isRunning, isLocalTimer, timeLeftSec, activeWorkout, pickWorkout]);
+    startTimerRef.current = startTimer;
+    isRunningRef.current = isRunning;
+  }, [startTimer, isRunning]);
+
+  // Fire breaks once when local timer crosses to zero (not while stuck at 0 after dismiss)
+  useEffect(() => {
+    const prev = prevTimeLeftRef.current;
+    prevTimeLeftRef.current = timeLeftSec;
+
+    if (!isRunning || !isLocalTimer || activeSession) return;
+    if (prev > 0 && timeLeftSec === 0) {
+      startBreakSession();
+    }
+  }, [isRunning, isLocalTimer, timeLeftSec, activeSession, startBreakSession]);
 
   const handleSaveSettings = (next: Settings) => {
     setSettings(next);
     saveSettings(next);
     setSpotlightWorkout(randomWorkoutForIntensity(next.intensityId));
+    if (activeSession && next.intensityId !== settings.intensityId) {
+      setActiveSession(buildBreakSession(next.intensityId));
+    }
     if (isRunning) {
       startTimer(next.intervalMin * 60 * 1000);
     }
@@ -84,46 +110,43 @@ export default function App() {
     }
   };
 
-  const handleWorkoutFinished = () => {
-    if (activeWorkout) recordCompletion(activeWorkout);
+  const handleQuestDone = (workout: Workout) => {
+    recordCompletion(workout);
   };
 
   const handleExitBreak = () => {
-    setActiveWorkout(null);
-    setSpotlightWorkout(pickWorkout());
+    setActiveSession(null);
+    setSpotlightWorkout(randomWorkoutForIntensity(settings.intensityId));
+    void rescheduleTimer();
   };
 
-  const handleSnooze = () => {
-    snooze();
-    setActiveWorkout(null);
+  const handleSnooze = async () => {
+    await snooze();
+    setActiveSession(null);
   };
 
   const previewQuest = () => {
-    const workout = pickWorkout();
-    setSpotlightWorkout(workout);
-    setActiveWorkout(workout);
+    startBreakSession();
   };
 
   const displayWorkout = useMemo(
-    () => activeWorkout ?? spotlightWorkout,
-    [activeWorkout, spotlightWorkout]
+    () => activeSession?.[0] ?? spotlightWorkout,
+    [activeSession, spotlightWorkout]
   );
 
-  const cardProgress = activeWorkout ? 0.33 : isRunning ? progress : 0;
+  const cardProgress = activeSession ? 0.33 : isRunning ? progress : 0;
 
   const mainClass =
     tab === "settings"
       ? "w-full max-w-3xl px-margin-mobile pt-md pb-xl flex-1 flex flex-col gap-xl mx-auto"
       : "w-full max-w-[1200px] px-margin-mobile md:px-margin-desktop pt-lg pb-xl flex-1 flex flex-col gap-lg items-center relative";
 
-  if (activeWorkout) {
-    const questIndex = (totalBreaks % 5) + 1;
+  if (activeSession) {
     return (
       <BreakFlow
-        workout={activeWorkout}
-        questIndex={questIndex}
-        totalBreaks={totalBreaks}
-        onWorkoutFinished={handleWorkoutFinished}
+        workouts={activeSession}
+        intensityId={settings.intensityId}
+        onQuestDone={handleQuestDone}
         onExit={handleExitBreak}
         onSnooze={handleSnooze}
         onDismiss={handleExitBreak}
@@ -147,7 +170,7 @@ export default function App() {
             <IntensityCard
               workout={displayWorkout}
               progress={cardProgress}
-              onStartQuest={!activeWorkout ? previewQuest : undefined}
+              onStartQuest={!activeSession ? previewQuest : undefined}
             />
 
             {getNotifPermission() === "denied" && (

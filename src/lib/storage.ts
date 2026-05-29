@@ -1,4 +1,4 @@
-import type { IntensityId } from "../data/intensity";
+import { normalizeIntensityId, type IntensityId } from "../data/intensity";
 import type { Workout } from "../data/workouts";
 import { titleForXp } from "../data/titles";
 import { updateStreak } from "./streak";
@@ -31,7 +31,7 @@ const DEFAULT_PROGRESS: Progress = {
 const DEFAULT_SETTINGS: Settings = {
   intervalMin: 45,
   notificationsEnabled: true,
-  intensityId: "standard",
+  intensityId: "cave",
 };
 
 function read<T>(key: string, fallback: T): T {
@@ -57,7 +57,11 @@ export function saveProgress(progress: Progress): void {
 }
 
 export function loadSettings(): Settings {
-  return read(SETTINGS_KEY, DEFAULT_SETTINGS);
+  const settings = read(SETTINGS_KEY, DEFAULT_SETTINGS);
+  return {
+    ...settings,
+    intensityId: normalizeIntensityId(settings.intensityId),
+  };
 }
 
 export function saveSettings(settings: Settings): void {

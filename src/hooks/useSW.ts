@@ -70,9 +70,7 @@ export function useSW(onMessage: (msg: SWMessage) => void) {
           intervalMs: data.intervalMs,
           isRunning: data.isRunning,
         });
-        if (data.isRunning && data.nextBreakAt != null) {
-          setLocalSchedule(null);
-        }
+        // Keep localSchedule as source of truth while running — do not clear on SW sync
       }
 
       onMessageRef.current(data);
