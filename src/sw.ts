@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
-import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
+import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
+import { NavigationRoute, registerRoute } from "workbox-routing";
 import {
   normalizeIntensityId,
   randomWorkoutForIntensity,
@@ -13,6 +14,12 @@ declare const self: ServiceWorkerGlobalScope;
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL("index.html"), {
+    denylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
+  })
+);
+
 const STORE = "goblin-break-state";
 const DB_NAME = "goblin-break-db";
 const NOTIF_TAG = "goblin-break";
@@ -22,19 +29,20 @@ let intervalMs = 30 * 60 * 1000;
 let breakTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingWorkoutId: string | null = null;
 
-function readIntensityId(): IntensityId {
+async function readIntensityId(): Promise<IntensityId> {
   try {
-    const raw = localStorage.getItem("gmb:settings");
-    if (!raw) return "cave";
-    const parsed = JSON.parse(raw) as { intensityId?: string };
-    return normalizeIntensityId(parsed.intensityId);
+    const saved = (await dbGet("settings")) as { intensityId?: string } | null;
+    if (saved?.intensityId) {
+      return normalizeIntensityId(saved.intensityId);
+    }
   } catch {
-    return "cave";
+    // fall through
   }
+  return "cave";
 }
 
-function pickWorkout() {
-  return randomWorkoutForIntensity(readIntensityId());
+async function pickWorkout() {
+  return randomWorkoutForIntensity(await readIntensityId());
 }
 
 async function openDB(): Promise<IDBDatabase> {
@@ -91,7 +99,7 @@ function broadcastState(): void {
 }
 
 async function showBreakNotification(workoutId: string): Promise<void> {
-  const workout = getWorkoutById(workoutId) ?? pickWorkout();
+  const workout = getWorkoutById(workoutId) ?? (await pickWorkout());
   pendingWorkoutId = workout.id;
   const reminder = randomReminder();
 
@@ -114,7 +122,7 @@ async function showBreakNotification(workoutId: string): Promise<void> {
 }
 
 async function fireBreak(): Promise<void> {
-  const workout = pickWorkout();
+  const workout = await pickWorkout();
   pendingWorkoutId = workout.id;
   await showBreakNotification(workout.id);
   await broadcast({ type: "BREAK", workoutId: workout.id });
@@ -207,28 +215,36 @@ self.addEventListener("message", (event) => {
       replyState();
       break;
     }
+    case "SYNC_SETTINGS": {
+      const settings = (event.data as { payload?: { intensityId?: string } }).payload;
+      if (settings) {
+        void dbSet("settings", settings);
+      }
+      break;
+    }
   }
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const action = event.action;
-  const workoutId =
-    (event.notification.data as { workoutId?: string } | undefined)?.workoutId ??
-    pendingWorkoutId ??
-    pickWorkout().id;
-
-  if (action === "snooze") {
-    scheduleNext(5 * 60 * 1000);
-    return;
-  }
-
-  if (action === "done") {
-    void broadcast({ type: "BREAK_DONE", workoutId });
-  }
 
   event.waitUntil(
     (async () => {
+      const workoutId =
+        (event.notification.data as { workoutId?: string } | undefined)?.workoutId ??
+        pendingWorkoutId ??
+        (await pickWorkout()).id;
+
+      if (action === "snooze") {
+        scheduleNext(5 * 60 * 1000);
+        return;
+      }
+
+      if (action === "done") {
+        await broadcast({ type: "BREAK_DONE", workoutId });
+      }
+
       const clients = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,

@@ -13,6 +13,8 @@ import { useTimer } from "./hooks/useTimer";
 import { buildBreakSession } from "./lib/breakSession";
 import { canNotify, getNotifPermission, requestNotifPermission } from "./lib/notify";
 import { loadSettings, saveSettings, type Settings } from "./lib/storage";
+import { syncSettingsToSW } from "./lib/swSync";
+import { InstallPrompt } from "./components/InstallPrompt";
 
 export default function App() {
   const { totalBreaks, title, recordCompletion } = useProgress();
@@ -76,9 +78,14 @@ export default function App() {
     }
   }, [isRunning, isLocalTimer, timeLeftSec, activeSession, startBreakSession]);
 
+  useEffect(() => {
+    void syncSettingsToSW(settings);
+  }, [settings]);
+
   const handleSaveSettings = (next: Settings) => {
     setSettings(next);
     saveSettings(next);
+    void syncSettingsToSW(next);
     if (activeSession && next.intensityId !== settings.intensityId) {
       setActiveSession(buildBreakSession(next.intensityId));
     }
@@ -152,6 +159,8 @@ export default function App() {
 
               <IntensityCard intensityId={settings.intensityId} />
             </div>
+
+            <InstallPrompt />
 
             {getNotifPermission() === "denied" && (
               <p className="font-body-md text-error text-center max-w-md w-full">
